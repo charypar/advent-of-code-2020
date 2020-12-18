@@ -28,14 +28,20 @@ fn main() {
 #[derive(Debug, PartialEq)]
 struct Policy {
     letter: char,
-    reps: std::ops::Range<usize>,
+    positions: [usize; 2],
 }
 
 impl Policy {
     fn is_valid(&self, s: &str) -> bool {
-        let (matches, _) = s.chars().partition::<Vec<_>, _>(|c| *c == self.letter);
+        let [p1, p2] = self.positions;
+        let chars = s.chars().collect::<Vec<_>>();
+        let letter = &self.letter;
 
-        self.reps.contains(&matches.len())
+        if let [Some(first), Some(second)] = [chars.get(p1 - 1), chars.get(p2 - 1)] {
+            return first == letter && second != letter || first != letter && second == letter;
+        }
+
+        true
     }
 }
 
@@ -45,14 +51,14 @@ impl FromStr for Policy {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bits = s.split(&['-', ' '][..]).collect::<Vec<&str>>();
 
-        if let [from, to, character] = bits[..] {
-            let from = from.parse::<usize>()?;
-            let to = to.parse::<usize>()?;
+        if let [first, second, character] = bits[..] {
+            let first = first.parse::<usize>()?;
+            let second = second.parse::<usize>()?;
             let character = character.chars().next().unwrap();
 
             return Ok(Policy {
                 letter: character,
-                reps: from..(to + 1),
+                positions: [first, second],
             });
         }
 
@@ -80,7 +86,7 @@ mod tests {
             "1-3 x".parse::<Policy>().unwrap(),
             Policy {
                 letter: 'x',
-                reps: 1..4
+                positions: [1, 3]
             }
         );
     }
@@ -89,28 +95,21 @@ mod tests {
     fn check_invalid_password() {
         let policy = Policy {
             letter: 'b',
-            reps: 2..5,
+            positions: [2, 5],
         };
 
-        assert!(!policy.is_valid("aaaa"));
-        assert!(!policy.is_valid("abaaa"));
-        assert!(!policy.is_valid("ababbaabb"));
+        assert!(!policy.is_valid("aaaakgrffgfjgah"));
+        assert!(!policy.is_valid("abaabaaaa"));
     }
 
     #[test]
     fn check_valid_password() {
         let policy = Policy {
             letter: 'b',
-            reps: 2..5,
+            positions: [2, 5],
         };
 
-        assert!(policy.is_valid("bb"));
-        assert!(policy.is_valid("bbb"));
-        assert!(policy.is_valid("bbbb"));
-
-        assert!(policy.is_valid("bbaahahhahazu"));
-        assert!(policy.is_valid("dasdbbaahhhahazu"));
-        assert!(policy.is_valid("dasdbb"));
-        assert!(policy.is_valid("dasdbadfabasdas"));
+        assert!(policy.is_valid("abxcxaasd"));
+        assert!(policy.is_valid("axaabew"));
     }
 }
