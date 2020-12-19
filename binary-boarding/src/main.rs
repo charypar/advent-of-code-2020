@@ -1,13 +1,23 @@
-use std::io::BufRead;
+use std::{collections::HashSet, io::BufRead};
 
 fn main() {
-    let mut max_seat = 0;
+    let mut seats: HashSet<usize> = HashSet::with_capacity(128 * 8);
 
     while let Some(Ok(line)) = std::io::stdin().lock().lines().next() {
-        max_seat = std::cmp::max(max_seat, seat_id(&line));
+        seats.insert(seat_id(&line));
     }
 
-    println!("Max seat: {}", max_seat);
+    let mut seats = seats.iter().collect::<Vec<_>>();
+    seats.sort();
+
+    for pair in seats.windows(2) {
+        if let [s1, s2] = pair {
+            if *s2 - *s1 > 1 {
+                println!("Seat is: {}", *s1 + 1);
+                return;
+            }
+        }
+    }
 }
 
 fn seat_id(code: &str) -> usize {
