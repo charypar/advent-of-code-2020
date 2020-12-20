@@ -1,44 +1,41 @@
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::BufRead;
 
 fn main() {
-    let mut bags: HashMap<String, HashSet<String>> = HashMap::new(); // inner bag, possible outer bags
+    let mut bags: HashMap<String, Vec<(u64, String)>> = HashMap::new();
 
     while let Some(Ok(line)) = std::io::stdin().lock().lines().next() {
         let (outer, inners) = parse_rule(&line);
 
-        bags.entry(outer.to_string()).or_insert_with(HashSet::new);
-        for (_, inner) in &inners {
-            bags.entry(inner.to_string())
-                .or_insert_with(HashSet::new)
-                .insert(outer.to_string());
-        }
+        bags.insert(
+            outer.to_string(),
+            inners.iter().map(|(n, b)| (*n, b.to_string())).collect(),
+        );
     }
 
-    // compute transitive closure of the "shiny gold" containers
-
-    let mut bags_closure = bags.get("shiny gold").unwrap().clone();
-    let mut length = 0;
-
-    // repeat until we stop adding bags
-    while bags_closure.len() > length {
-        length = bags_closure.len();
-
-        let new_bags: Vec<_> = bags_closure
-            .iter()
-            .flat_map(|bag| bags.get(bag).unwrap())
-            .collect();
-
-        for bag in new_bags {
-            bags_closure.insert(bag.clone());
-        }
-    }
-
-    println!("{:?}", bags_closure.len());
+    println!("{:?}", count_bags(&bags, "shiny gold", 0) - 1);
 }
 
-fn parse_rule<'a>(text: &'a str) -> (&'a str, Vec<(usize, &'a str)>) {
+fn count_bags(rules: &HashMap<String, Vec<(u64, String)>>, colour: &str, depth: usize) -> u64 {
+    let prefix = vec!["| "; depth].join("");
+
+    println!(
+        "{}With {} bag, I also need to take {:?}.",
+        prefix, colour, rules[colour]
+    );
+
+    let total = 1 + rules[colour]
+        .iter()
+        .map(|(n, col)| n * count_bags(rules, col, depth + 1))
+        .sum::<u64>();
+
+    println!("{}That's a total of {} bags.", prefix, total - 1);
+
+    total
+}
+
+fn parse_rule<'a>(text: &'a str) -> (&'a str, Vec<(u64, &'a str)>) {
     let bags_pattern = Regex::new(r"(\d)+ ([a-z ]+) bags?[,.]?").unwrap();
     let parts = text.split(" bags contain ").collect::<Vec<_>>();
 
@@ -53,9 +50,9 @@ fn parse_rule<'a>(text: &'a str) -> (&'a str, Vec<(usize, &'a str)>) {
             let n = captures.get(1).unwrap().as_str();
             let bags = captures.get(2).unwrap().as_str();
 
-            (n.parse::<usize>().unwrap(), bags)
+            (n.parse::<u64>().unwrap(), bags)
         })
-        .collect::<Vec<(usize, &str)>>();
+        .collect::<Vec<(u64, &str)>>();
 
     (parts[0], pairs)
 }
