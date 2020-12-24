@@ -1,5 +1,7 @@
 use std::io::BufRead;
+use std::str::FromStr;
 
+#[derive(Debug)]
 enum Cmd {
     N(i64),
     S(i64),
@@ -10,107 +12,137 @@ enum Cmd {
     F(i64),
 }
 
+impl FromStr for Cmd {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (letter, number) = (&s[0..1], &s[1..]);
+        let number = number
+            .parse::<i64>()
+            .map_err(|_| "parameter not a number")?;
+
+        match letter {
+            "N" => Ok(Cmd::N(number)),
+            "S" => Ok(Cmd::S(number)),
+            "E" => Ok(Cmd::E(number)),
+            "W" => Ok(Cmd::W(number)),
+            "L" => Ok(Cmd::L(number)),
+            "R" => Ok(Cmd::R(number)),
+            "F" => Ok(Cmd::F(number)),
+            _ => Err("unknown command"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum Direction {
-    North,
-    West,
-    South,
-    East,
+    Left,
+    Right,
 }
 
 impl Direction {
-    fn left(&self, d: i64) -> Self {
-        let shift = d / 90;
-        let compas = [
-            Direction::North,
-            Direction::West,
-            Direction::South,
-            Direction::East,
-        ];
+    fn transform(&self, deg: i64, point: (i64, i64)) -> (i64, i64) {
+        let t90 = [[0, -1], [1, 0]];
+        let t180 = [[-1, 0], [0, -1]];
+        let t270 = [[0, 1], [-1, 0]];
 
-        let i = compas.iter().position(|dir| dir == self).unwrap() as i64;
+        let t = match (self, deg) {
+            (Direction::Right, 90) | (Direction::Left, 270) => t270,
+            (_, 180) => t180,
+            (Direction::Right, 270) | (Direction::Left, 90) => t90,
+            (_, _) => unreachable!(),
+        };
 
-        compas[(i + shift) as usize % 4]
+        let (x, y) = point;
+
+        (x * t[0][0] + y * t[0][1], x * t[1][0] + y * t[1][1])
     }
+}
 
-    fn right(&self, d: i64) -> Self {
-        self.left(-d)
-    }
+#[derive(Debug, Clone, Copy)]
+struct NavData {
+    position: (i64, i64),
+    waypoint: (i64, i64), // relative to position
+}
 
-    fn forward(&self, d: i64) -> (i64, i64) {
-        match self {
-            Direction::North => (0, d),
-            Direction::West => (-d, 0),
-            Direction::South => (0, -d),
-            Direction::East => (d, 0),
+impl NavData {
+    fn step(self, command: Cmd) -> NavData {
+        let NavData { position, waypoint } = self;
+        let (px, py) = position;
+        let (wx, wy) = waypoint;
+
+        match command {
+            Cmd::N(n) => NavData {
+                position,
+                waypoint: (wx, wy + n),
+            },
+            Cmd::S(n) => NavData {
+                position,
+                waypoint: (wx, wy - n),
+            },
+            Cmd::E(n) => NavData {
+                position,
+                waypoint: (wx + n, wy),
+            },
+            Cmd::W(n) => NavData {
+                position,
+                waypoint: (wx - n, wy),
+            },
+            Cmd::L(n) => NavData {
+                position,
+                waypoint: Direction::Left.transform(n, waypoint),
+            },
+            Cmd::R(n) => NavData {
+                position,
+                waypoint: Direction::Right.transform(n, waypoint),
+            },
+            Cmd::F(n) => {
+                let (dx, dy) = (wx * n, wy * n);
+
+                NavData {
+                    position: (px + dx, py + dy),
+                    waypoint,
+                }
+            }
         }
     }
 }
 
 fn main() {
-    let (x, y, facing) = std::io::stdin()
+    let initial = NavData {
+        position: (0, 0),
+        waypoint: (10, 1),
+    };
+    let data = std::io::stdin()
         .lock()
         .lines()
-        .fold((0, 0, Direction::East), |state, line| {
-            step(state, parse(&line.unwrap()))
+        .fold(initial, |state, line| {
+            let cmd = line.unwrap().parse().unwrap();
+
+            state.step(cmd)
         });
 
-    println!("Done, ({}, {}) facing {:?}", x, y, facing);
+    let (x, y) = data.position;
+
+    println!("Done, ({}, {})", x, y);
     println!("Distance: {}", x.abs() + y.abs());
-}
-
-fn step(position: (i64, i64, Direction), command: Cmd) -> (i64, i64, Direction) {
-    let (x, y, facing) = position;
-    match command {
-        Cmd::N(n) => (x, y + n, facing),
-        Cmd::S(n) => (x, y - n, facing),
-        Cmd::E(n) => (x + n, y, facing),
-        Cmd::W(n) => (x - n, y, facing),
-        Cmd::L(n) => (x, y, facing.left(n)),
-        Cmd::R(n) => (x, y, facing.right(n)),
-        Cmd::F(n) => {
-            let (dx, dy) = facing.forward(n);
-
-            (x + dx, y + dy, facing)
-        }
-    }
-}
-
-fn parse(command: &str) -> Cmd {
-    let (letter, number) = (&command[0..1], &command[1..]);
-    let number = number.parse::<i64>().unwrap();
-
-    match letter {
-        "N" => Cmd::N(number),
-        "S" => Cmd::S(number),
-        "E" => Cmd::E(number),
-        "W" => Cmd::W(number),
-        "L" => Cmd::L(number),
-        "R" => Cmd::R(number),
-        "F" => Cmd::F(number),
-        _ => panic!(),
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Direction::*;
 
     #[test]
-    fn turning_left() {
-        let direction = Direction::East;
+    fn test_turning() {
+        let point = (10, 1);
 
-        assert_eq!(direction.left(90), Direction::North);
-        assert_eq!(direction.left(180), Direction::West);
-        assert_eq!(direction.left(270), Direction::South);
-    }
+        assert_eq!(Left.transform(180, point), (-10, -1));
+        assert_eq!(Right.transform(180, point), (-10, -1));
 
-    #[test]
-    fn turning_right() {
-        let direction = Direction::East;
+        assert_eq!(Left.transform(90, point), (-1, 10));
+        assert_eq!(Left.transform(270, point), (1, -10));
 
-        assert_eq!(direction.right(90), Direction::South);
-        assert_eq!(direction.right(180), Direction::West);
-        assert_eq!(direction.right(270), Direction::North);
+        assert_eq!(Right.transform(90, point), (1, -10));
+        assert_eq!(Right.transform(270, point), (-1, 10));
     }
 }
