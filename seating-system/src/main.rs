@@ -47,10 +47,10 @@ fn step(map: &Vec<Vec<Square>>) -> Vec<Vec<Square>> {
         .map(|i| {
             (0..map[0].len())
                 .map(|j| {
-                    let ns = neighbours(&map, (i, j));
+                    let ns = neighbour_seats(&map, (i, j));
                     let occs = ns.into_iter().filter(|s| *s == Square::Seat(true)).count();
 
-                    if map[i][j] == Square::Seat(true) && occs > 3 {
+                    if map[i][j] == Square::Seat(true) && occs > 4 {
                         return Square::Seat(false);
                     }
 
@@ -65,21 +65,45 @@ fn step(map: &Vec<Vec<Square>>) -> Vec<Vec<Square>> {
         .collect()
 }
 
-fn neighbours(map: &Vec<Vec<Square>>, coordinates: (usize, usize)) -> Vec<Square> {
+fn neighbour_seats(map: &Vec<Vec<Square>>, coordinates: (usize, usize)) -> Vec<Square> {
     let y: i64 = coordinates.0 as i64;
     let x: i64 = coordinates.1 as i64;
 
-    ((y - 1)..=(y + 1))
-        .flat_map(|i| {
-            ((x - 1)..=(x + 1)).filter_map(move |j| match (i, j) {
-                (a, b) if a == y && b == x => None,
-                (a, b) if a < 0 || b < 0 || a >= map.len() as i64 || b >= map[0].len() as i64 => {
-                    Some(Square::Floor)
-                }
-                (a, b) => Some(map[a as usize][b as usize]),
-            })
-        })
-        .collect()
+    [
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+    ]
+    .iter()
+    .map(|(i, j)| -> Square {
+        let mut dist: i64 = 1;
+
+        loop {
+            let (a, b) = (
+                coordinates.0 as i64 + i * dist,
+                coordinates.1 as i64 + j * dist,
+            );
+            dist += 1;
+
+            if a < 0 || b < 0 || a >= map.len() as i64 || b >= map[0].len() as i64 {
+                return Square::Floor;
+            }
+
+            let square = map[a as usize][b as usize];
+
+            if square == Square::Floor {
+                continue;
+            }
+
+            return square;
+        }
+    })
+    .collect()
 }
 
 #[cfg(test)]
@@ -99,36 +123,27 @@ mod tests {
         ];
 
         assert_eq!(
-            neighbours(&map, (0, 0)),
-            vec![F, F, F, F, F, F, F, S(false)]
+            neighbour_seats(&map, (0, 0)),
+            vec![F, F, F, F, S(false), F, S(true), S(false)]
         );
 
         assert_eq!(
-            neighbours(&map, (2, 2)),
-            vec![S(false), F, S(true), F, F, S(false), S(true), S(false)]
+            neighbour_seats(&map, (2, 2)),
+            vec![
+                S(false),
+                S(false),
+                S(true),
+                F,
+                F,
+                S(false),
+                S(true),
+                S(false)
+            ]
         );
 
         assert_eq!(
-            neighbours(&map, (1, 2)),
-            vec![F, S(false), F, S(false), S(true), F, F, F]
+            neighbour_seats(&map, (1, 2)),
+            vec![F, S(false), F, S(false), S(true), S(true), S(true), F]
         )
-    }
-
-    #[test]
-    fn makes_a_step() {
-        let map = vec![
-            vec![S(false), F, S(false), F],
-            vec![F, S(false), F, S(true)],
-            vec![F, F, S(true), S(true)],
-            vec![S(true), S(false), S(true), S(true)],
-        ];
-
-        let new_map = step(&map);
-
-        assert_eq!(new_map[0][0], S(true));
-        assert_eq!(new_map[2][3], S(false));
-        assert_eq!(new_map[1][0], F);
-        assert_eq!(new_map[0][2], S(false));
-        assert_eq!(new_map[1][3], S(true));
     }
 }
