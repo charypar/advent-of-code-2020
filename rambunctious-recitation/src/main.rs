@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 fn main() {
     println!(
-        "2020th number is {}",
-        Seq::new(&[2, 15, 0, 9, 1, 20]).nth(2019).unwrap()
+        "30000000th number is {}",
+        Seq::new(&[2, 15, 0, 9, 1, 20]).nth(29999999).unwrap()
     );
 }
 
