@@ -6,7 +6,7 @@ fn main() {
     let mut memory: HashMap<u64, u64> = HashMap::new();
     let mut mask = Mask {
         overwrite: 0,
-        default: 0,
+        floating: vec![],
     };
 
     while let Some(Ok(line)) = std::io::stdin().lock().lines().next() {
@@ -17,7 +17,9 @@ fn main() {
                 mask = m;
             }
             Instruction::Mem { address, value } => {
-                memory.insert(address, mask.apply(value));
+                for addr in mask.apply(address) {
+                    memory.insert(addr, value);
+                }
             }
         }
     }
@@ -28,12 +30,22 @@ fn main() {
 #[derive(Debug, PartialEq)]
 struct Mask {
     overwrite: u64,
-    default: u64,
+    floating: Vec<usize>,
 }
 
 impl Mask {
-    fn apply(&self, input: u64) -> u64 {
-        (self.overwrite & self.default) | (!self.overwrite & input)
+    fn apply(&self, input: u64) -> Vec<u64> {
+        let base = input | self.overwrite;
+
+        self.floating.iter().fold(vec![base], |acc, i| {
+            acc.into_iter()
+                .flat_map(|address| {
+                    let mask = 1 << i;
+
+                    vec![address | mask, address & !mask]
+                })
+                .collect()
+        })
     }
 }
 
@@ -53,28 +65,28 @@ impl FromStr for Instruction {
                     line[7..]
                         .chars()
                         .map(|c| match c {
-                            'X' => '0',
-                            _ => '1',
+                            '1' => '1',
+                            _ => '0',
                         })
                         .collect::<String>()
                         .as_ref(),
                     2,
                 )
                 .unwrap();
-                let default = u64::from_str_radix(
-                    line[7..]
-                        .chars()
-                        .map(|c| match c {
-                            'X' => '0',
-                            x => x,
-                        })
-                        .collect::<String>()
-                        .as_ref(),
-                    2,
-                )
-                .unwrap();
+                let floating = line[7..]
+                    .chars()
+                    .rev()
+                    .enumerate()
+                    .filter_map(|(i, c)| match c {
+                        'X' => Some(i),
+                        _ => None,
+                    })
+                    .collect();
 
-                Ok(Instruction::Mask(Mask { overwrite, default }))
+                Ok(Instruction::Mask(Mask {
+                    overwrite,
+                    floating,
+                }))
             }
             "mem[" => {
                 let address = line[4..]
@@ -104,10 +116,10 @@ mod tests {
     #[test]
     fn reads_a_mask_instruction() {
         let expected = Ok(Instruction::Mask(Mask {
-            overwrite: 0b1000010,
-            default: 0b1000000,
+            overwrite: 0b10010,
+            floating: vec![0, 5],
         }));
-        let actual = "mask = XXXXXXXXXXXXXXXXXXXXXXXXXXXXX1XXXX0X".parse::<Instruction>();
+        let actual = "mask = 000000000000000000000000000000X1001X".parse::<Instruction>();
 
         assert_eq!(actual, expected);
     }
@@ -124,12 +136,28 @@ mod tests {
     }
 
     #[test]
-    fn applies_mask() {
+    fn applies_small_mask() {
         let mask = Mask {
-            overwrite: 0b1000010,
-            default: 0b1000000,
+            overwrite: 0b10010,
+            floating: vec![0, 5],
         };
 
-        assert_eq!(mask.apply(0b1011), 0b1001001);
+        let mut actual = mask.apply(0b101010);
+        actual.sort();
+
+        assert_eq!(actual, vec![26, 27, 58, 59]);
+    }
+
+    #[test]
+    fn applies_bigger_mask() {
+        let mask = Mask {
+            overwrite: 0,
+            floating: vec![0, 1, 3],
+        };
+
+        let mut actual = mask.apply(0b11010);
+        actual.sort();
+
+        assert_eq!(actual, vec![16, 17, 18, 19, 24, 25, 26, 27]);
     }
 }
