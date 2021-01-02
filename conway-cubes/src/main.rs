@@ -33,21 +33,23 @@ fn step(cube: &Cube, neighbours: &[&Cube]) -> Cube {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-struct Coordinate((isize, isize, isize));
+struct Coordinate((isize, isize, isize, isize));
 
 impl Coordinate {
     fn neighbourhood(&self) -> Vec<Coordinate> {
-        let Coordinate((x, y, z)) = self;
+        let Coordinate((x, y, z, w)) = self;
 
         (-1..=1)
             .flat_map(move |i| {
                 (-1..=1).flat_map(move |j| {
-                    (-1..=1).filter_map(move |k| {
-                        if (i, j, k) != (0, 0, 0) {
-                            Some(Coordinate((*x + i, *y + j, *z + k)))
-                        } else {
-                            None
-                        }
+                    (-1..=1).flat_map(move |k| {
+                        (-1..=1).filter_map(move |l| {
+                            if (i, j, k, l) != (0, 0, 0, 0) {
+                                Some(Coordinate((*x + i, *y + j, *z + k, *w + l)))
+                            } else {
+                                None
+                            }
+                        })
                     })
                 })
             })
@@ -84,7 +86,7 @@ impl Space {
                     .collect::<Vec<_>>();
                 let cube = self.get(&c);
 
-                assert_eq!(neighbours.len(), 26);
+                assert_eq!(neighbours.len(), 80);
 
                 if let Cube::Active = step_fn(cube, &neighbours) {
                     next.insert(c, Cube::Active);
@@ -101,19 +103,22 @@ impl Space {
         RangeInclusive<isize>,
         RangeInclusive<isize>,
         RangeInclusive<isize>,
+        RangeInclusive<isize>,
     ) {
-        let (mut xs, mut ys, mut zs) = (vec![], vec![], vec![]);
+        let (mut xs, mut ys, mut zs, mut ws) = (vec![], vec![], vec![], vec![]);
 
-        for Coordinate((x, y, z)) in self.0.keys() {
+        for Coordinate((x, y, z, w)) in self.0.keys() {
             xs.push(*x);
             ys.push(*y);
             zs.push(*z);
+            ws.push(*w)
         }
 
         (
             (*xs.iter().min().unwrap())..=(*xs.iter().max().unwrap()),
             (*ys.iter().min().unwrap())..=(*ys.iter().max().unwrap()),
             (*zs.iter().min().unwrap())..=(*zs.iter().max().unwrap()),
+            (*ws.iter().min().unwrap())..=(*ws.iter().max().unwrap()),
         )
     }
 }
@@ -130,7 +135,7 @@ impl FromStr for Space {
                     line.chars()
                         .enumerate()
                         .filter_map(move |(x, cube)| match cube {
-                            '#' => Some((Coordinate((x as isize, y as isize, 0)), Cube::Active)),
+                            '#' => Some((Coordinate((x as isize, y as isize, 0, 0)), Cube::Active)),
                             _ => None,
                         })
                 })
@@ -141,24 +146,26 @@ impl FromStr for Space {
 
 impl Debug for Space {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        let (xs, ys, zs) = self.limits();
+        let (xs, ys, zs, ws) = self.limits();
 
-        for z in zs {
-            writeln!(f, "z={}", z)?;
+        for w in ws {
+            for z in zs.clone() {
+                writeln!(f, "z={}, w={}", z, w)?;
 
-            for y in ys.clone() {
-                writeln!(
-                    f,
-                    "{}",
-                    xs.clone()
-                        .map(|x| match self.get(&Coordinate((x, y, z))) {
-                            Cube::Active => '#',
-                            _ => '.',
-                        })
-                        .collect::<String>()
-                )?;
+                for y in ys.clone() {
+                    writeln!(
+                        f,
+                        "{}",
+                        xs.clone()
+                            .map(|x| match self.get(&Coordinate((x, y, z, w))) {
+                                Cube::Active => '#',
+                                _ => '.',
+                            })
+                            .collect::<String>()
+                    )?;
+                }
+                writeln!(f)?;
             }
-            writeln!(f)?;
         }
 
         Ok(())
@@ -171,35 +178,8 @@ mod tests {
 
     #[test]
     fn finds_neigbouhood() {
-        let exepected = vec![
-            Coordinate((0, 1, 2)),
-            Coordinate((0, 1, 3)),
-            Coordinate((0, 1, 4)),
-            Coordinate((0, 2, 2)),
-            Coordinate((0, 2, 3)),
-            Coordinate((0, 2, 4)),
-            Coordinate((0, 3, 2)),
-            Coordinate((0, 3, 3)),
-            Coordinate((0, 3, 4)),
-            Coordinate((1, 1, 2)),
-            Coordinate((1, 1, 3)),
-            Coordinate((1, 1, 4)),
-            Coordinate((1, 2, 2)),
-            Coordinate((1, 2, 4)),
-            Coordinate((1, 3, 2)),
-            Coordinate((1, 3, 3)),
-            Coordinate((1, 3, 4)),
-            Coordinate((2, 1, 2)),
-            Coordinate((2, 1, 3)),
-            Coordinate((2, 1, 4)),
-            Coordinate((2, 2, 2)),
-            Coordinate((2, 2, 3)),
-            Coordinate((2, 2, 4)),
-            Coordinate((2, 3, 2)),
-            Coordinate((2, 3, 3)),
-            Coordinate((2, 3, 4)),
-        ];
-        let actual = Coordinate((1, 2, 3)).neighbourhood();
+        let exepected = 80;
+        let actual = Coordinate((1, 2, 3, 4)).neighbourhood().len();
 
         assert_eq!(actual, exepected)
     }
@@ -209,11 +189,11 @@ mod tests {
         let actual = ".#.\n..#\n###".parse::<Space>().unwrap();
         let expected = Space(
             vec![
-                (Coordinate((1, 0, 0)), Cube::Active),
-                (Coordinate((2, 1, 0)), Cube::Active),
-                (Coordinate((0, 2, 0)), Cube::Active),
-                (Coordinate((1, 2, 0)), Cube::Active),
-                (Coordinate((2, 2, 0)), Cube::Active),
+                (Coordinate((1, 0, 0, 0)), Cube::Active),
+                (Coordinate((2, 1, 0, 0)), Cube::Active),
+                (Coordinate((0, 2, 0, 0)), Cube::Active),
+                (Coordinate((1, 2, 0, 0)), Cube::Active),
+                (Coordinate((2, 2, 0, 0)), Cube::Active),
             ]
             .into_iter()
             .collect(),
@@ -225,14 +205,14 @@ mod tests {
     #[test]
     fn finds_limits() {
         let actual = ".#.\n..#\n###".parse::<Space>().unwrap().limits();
-        let expected = (0..=2, 0..=2, 0..=0);
+        let expected = (0..=2, 0..=2, 0..=0, 0..=0);
 
         assert_eq!(actual, expected);
     }
     #[test]
     fn formats_debug_output() {
         let actual = format!("{:?}", ".#.\n..#\n###".parse::<Space>().unwrap());
-        let expected = "z=0\n.#.\n..#\n###\n\n";
+        let expected = "z=0, w=0\n.#.\n..#\n###\n\n";
 
         assert_eq!(actual, expected);
     }
@@ -245,20 +225,51 @@ mod tests {
         let actual = format!("{:?}", space);
         println!("{:?}", space);
 
-        let expected = "z=-1
+        let expected = "z=-1, w=-1
 #..
 ..#
 .#.
 
-z=0
+z=0, w=-1
+#..
+..#
+.#.
+
+z=1, w=-1
+#..
+..#
+.#.
+
+z=-1, w=0
+#..
+..#
+.#.
+
+z=0, w=0
 #.#
 .##
 .#.
 
-z=1
+z=1, w=0
 #..
 ..#
-.#.\n\n";
+.#.
+
+z=-1, w=1
+#..
+..#
+.#.
+
+z=0, w=1
+#..
+..#
+.#.
+
+z=1, w=1
+#..
+..#
+.#.
+\n";
 
         assert_eq!(actual, expected);
     }
